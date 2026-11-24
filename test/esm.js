@@ -27,9 +27,14 @@ describe('import()', () => {
             'encrypt',
             'generateKey',
             'hmacWithPassword',
+            'legacyMacFormatVersion',
+            'legacyMacPrefix',
             'macFormatVersion',
             'macPrefix',
             'seal',
+            'ttlPolicies',
+            'ttlPolicyFallbackModes',
+            'unknownTtlPolicy',
             'unseal'
         ]);
     });

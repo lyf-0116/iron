@@ -85,6 +85,44 @@ export interface SealOptions {
     Local clock time offset, expressed in number of milliseconds (positive or negative). Defaults to 0.
     */
     localtimeOffsetMsec: number;
+
+    /**
+    How to unseal a string whose embedded ttl policy is unknown (legacy strings) or does not match the local ttl option.
+    'permit' (default) keeps the legacy behavior, 'reject' fails the unseal. Defaults to 'permit'.
+    */
+    ttlPolicyFallback?: TtlPolicyFallbackMode;
+}
+
+
+/**
+Fallback mode when the ttl policy embedded in a sealed string is unknown or mismatched.
+*/
+export type TtlPolicyFallbackMode = 'permit' | 'reject';
+
+
+/**
+TTL policy identifiers embedded in the sealed string prefix.
+*/
+export interface TtlPolicies {
+
+    /**
+    The sealed string never expires and carries no expiration timestamp.
+    */
+    forever: string;
+
+    /**
+    The sealed string carries an expiration timestamp.
+    */
+    limited: string;
+}
+
+
+/**
+Fallback modes available for the `ttlPolicyFallback` option.
+*/
+export interface TtlPolicyFallbackModes {
+    PERMIT: TtlPolicyFallbackMode;
+    REJECT: TtlPolicyFallbackMode;
 }
 
 
@@ -160,9 +198,39 @@ export const macFormatVersion: string;
 
 
 /**
+Previous MAC normalization format version, whose strings carry no explicit ttl policy.
+*/
+export const legacyMacFormatVersion: string;
+
+
+/**
 MAC normalization prefix.
 */
 export const macPrefix: string;
+
+
+/**
+Prefix of sealed strings produced by the previous format version.
+*/
+export const legacyMacPrefix: string;
+
+
+/**
+TTL policy identifiers embedded in sealed strings.
+*/
+export const ttlPolicies: TtlPolicies;
+
+
+/**
+Identifier used internally for sealed strings without an explicit ttl policy.
+*/
+export const unknownTtlPolicy: string;
+
+
+/**
+Allowed values of the `ttlPolicyFallback` option.
+*/
+export const ttlPolicyFallbackModes: TtlPolicyFallbackModes;
 
 
 /**

@@ -7,8 +7,9 @@ cookies, authentication credentials, etc.), then receive it back and decrypt it.
 ensures that the message was not tampered with, and also provides a simple mechanism for password
 rotation.
 
-Note: the wire protocol has not changed since 1.x (the version increments reflected a change in
-the internal error format used by the module and by the node API as well as other node API changes).
+Note: the eight-component layout of the sealed string is unchanged since 1.x. Format version `3`
+extends the prefix with an explicit ttl policy identifier (see [TTL Policy](#ttl-policy)); strings
+produced with the previous format version (`Fe26.2`, prefix only) remain readable.
 
 **iron** provides methods for encrypting an object, generating a message authentication code (MAC),
 and serializing both into a cookie / URI / HTTP header friendly format. Sealed objects are useful
@@ -250,6 +251,12 @@ The _'seal()'_ and _'unseal()'_ methods also support the following options:
   Defaults to `60` seconds.
 - `localtimeOffsetMsec` - local clock time offset, expressed in number of milliseconds (positive or
   negative). Defaults to `0`.
+- `ttlPolicyFallback` - how `unseal()` treats a sealed string whose embedded ttl policy is unknown
+  (strings produced by older versions) or does not match the local `ttl` option:
+    - `'permit'` (default) - unseal the string using the behavior implied by the string itself, as in
+      previous versions. This preserves compatibility with existing sealed strings.
+    - `'reject'` - fail unsealing with an `Unknown ttl policy` error for legacy strings or a
+      `Seal ttl policy does not match options` error when the sealing and unsealing policies differ.
 
 ### Defaults
 
@@ -270,6 +277,23 @@ var options = {
     },
     ttl: 0,
     timestampSkewSec: 60,
-    localtimeOffsetMsec: 0
+    localtimeOffsetMsec: 0,
+    ttlPolicyFallback: 'permit'
 };
 ```
+
+### TTL Policy
+
+The ttl is decided by the party calling `seal()`: a string sealed with `ttl` of `0` never carries an
+expiration timestamp, while a string sealed with a non-zero `ttl` carries one. On its own this does not
+prove that the policy used at unseal time matches the one used at seal time - an unsealing configuration
+cannot retroactively add expiration to a string that was sealed forever, nor can it ignore the
+expiration embedded in a limited-lifetime string.
+
+To make the policy explicit, `seal()` embeds a ttl policy identifier in the sealed string prefix
+(`Fe26.3.0` for the forever policy, `Fe26.3.1` for the limited policy). When `unseal()` reads the string
+it compares the embedded policy with the policy implied by its own `ttl` option (`0` maps to forever,
+any other value maps to limited). A mismatch, or a legacy string without any policy identifier (prefix
+`Fe26.2`, treated as an unknown policy), is handled according to `ttlPolicyFallback`. Set
+`ttlPolicyFallback` to `'reject'` to guarantee that every accepted string was sealed with the same ttl
+policy as the local configuration.

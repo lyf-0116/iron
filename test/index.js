@@ -352,7 +352,7 @@ describe('Iron', () => {
             const macBaseString = Iron.macPrefix + '**' + key.salt + '*' + iv + '*' + encryptedB64 + '*';
             const mac = await Iron.hmacWithPassword(password, Iron.defaults.integrity, macBaseString);
             const ticket = macBaseString + '*' + mac.salt + '*' + mac.digest;
-            const err = await expect(Iron.unseal(ticket, password, Iron.defaults)).to.reject(/Failed parsing sealed object JSON: Unexpected token a/);
+            const err = await expect(Iron.unseal(ticket, password, Iron.defaults)).to.reject(/Failed parsing sealed object JSON: (Unexpected token a|Expected property name)/);
             expect(err.isBoom).to.be.true();
         });
 
@@ -376,6 +376,156 @@ describe('Iron', () => {
             const ticket = macBaseString + '*' + mac.salt + '*' + mac.digest;
             const err = await expect(Iron.unseal(ticket, password, Iron.defaults)).to.reject('Invalid expiration');
             expect(err.isBoom).to.be.true();
+        });
+
+        it('embeds the forever ttl policy in the sealed string', async () => {
+
+            const sealed = await Iron.seal(obj, password, Iron.defaults);
+            expect(sealed.startsWith('Fe26.3.0*')).to.be.true();
+
+            const unsealed = await Iron.unseal(sealed, password, Iron.defaults);
+            expect(unsealed).to.equal(obj);
+        });
+
+        it('embeds the limited ttl policy in the sealed string', async () => {
+
+            const options = Hoek.clone(Iron.defaults);
+            options.ttl = 200;
+            const sealed = await Iron.seal(obj, password, options);
+            expect(sealed.startsWith('Fe26.3.1*')).to.be.true();
+
+            const unsealed = await Iron.unseal(sealed, password, options);
+            expect(unsealed).to.equal(obj);
+        });
+
+        it('returns an error when the mac prefix carries an unknown ttl policy', async () => {
+
+            const sealed = await Iron.seal(obj, password, Iron.defaults);
+            const ticket = sealed.replace('Fe26.3.0*', 'Fe26.3.9*');
+            const err = await expect(Iron.unseal(ticket, password, Iron.defaults)).to.reject('Wrong mac prefix');
+            expect(err.isBoom).to.be.true();
+        });
+
+        it('returns an error when the mac prefix scheme is wrong', async () => {
+
+            const sealed = await Iron.seal(obj, password, Iron.defaults);
+            const ticket = sealed.replace('Fe26.3.0*', 'Xx26.3.0*');
+            const err = await expect(Iron.unseal(ticket, password, Iron.defaults)).to.reject('Wrong mac prefix');
+            expect(err.isBoom).to.be.true();
+        });
+
+        it('returns an error when the mac prefix format version is unknown', async () => {
+
+            const sealed = await Iron.seal(obj, password, Iron.defaults);
+            const ticket = sealed.replace('Fe26.3.0*', 'Fe26.4.0*');
+            const err = await expect(Iron.unseal(ticket, password, Iron.defaults)).to.reject('Wrong mac prefix');
+            expect(err.isBoom).to.be.true();
+        });
+
+        it('returns an error when a forever policy is combined with an expiration', async () => {
+
+            const limitedOptions = Hoek.clone(Iron.defaults);
+            limitedOptions.ttl = 200;
+            const limited = await Iron.seal(obj, password, limitedOptions);
+            const ticket = limited.replace('Fe26.3.1*', 'Fe26.3.0*');
+
+            const err = await expect(Iron.unseal(ticket, password, limitedOptions)).to.reject('Inconsistent ttl policy and expiration');
+            expect(err.isBoom).to.be.true();
+        });
+
+        it('returns an error when a limited policy is combined without an expiration', async () => {
+
+            const sealed = await Iron.seal(obj, password, Iron.defaults);
+            const ticket = sealed.replace('Fe26.3.0*', 'Fe26.3.1*');
+
+            const err = await expect(Iron.unseal(ticket, password, Iron.defaults)).to.reject('Inconsistent ttl policy and expiration');
+            expect(err.isBoom).to.be.true();
+        });
+
+        it('permits a limited seal unsealed with a forever configuration by default', async () => {
+
+            const sealOptions = Hoek.clone(Iron.defaults);
+            sealOptions.ttl = 200;
+            const sealed = await Iron.seal(obj, password, sealOptions);
+
+            const unsealed = await Iron.unseal(sealed, password, Iron.defaults);
+            expect(unsealed).to.equal(obj);
+        });
+
+        it('permits a forever seal unsealed with a limited configuration by default', async () => {
+
+            const sealed = await Iron.seal(obj, password, Iron.defaults);
+
+            const unsealOptions = Hoek.clone(Iron.defaults);
+            unsealOptions.ttl = 200;
+            const unsealed = await Iron.unseal(sealed, password, unsealOptions);
+            expect(unsealed).to.equal(obj);
+        });
+
+        it('rejects a ttl policy mismatch when ttlPolicyFallback is reject', async () => {
+
+            const sealOptions = Hoek.clone(Iron.defaults);
+            sealOptions.ttl = 200;
+            const sealed = await Iron.seal(obj, password, sealOptions);
+
+            const unsealOptions = Hoek.clone(Iron.defaults);
+            unsealOptions.ttlPolicyFallback = Iron.ttlPolicyFallbackModes.REJECT;
+            const err = await expect(Iron.unseal(sealed, password, unsealOptions)).to.reject('Seal ttl policy does not match options');
+            expect(err.isBoom).to.be.true();
+        });
+
+        it('accepts matching ttl policies when ttlPolicyFallback is reject', async () => {
+
+            const sealOptions = Hoek.clone(Iron.defaults);
+            sealOptions.ttl = 200;
+            const sealed = await Iron.seal(obj, password, sealOptions);
+
+            const unsealOptions = Hoek.clone(Iron.defaults);
+            unsealOptions.ttl = 200;
+            unsealOptions.ttlPolicyFallback = Iron.ttlPolicyFallbackModes.REJECT;
+            const unsealed = await Iron.unseal(sealed, password, unsealOptions);
+            expect(unsealed).to.equal(obj);
+        });
+
+        it('treats legacy sealed strings as an unknown ttl policy and permits them by default', async () => {
+
+            const ticket = 'Fe26.2**0cdd607945dd1dffb7da0b0bf5f1a7daa6218cbae14cac51dcbd91fb077aeb5b*aOZLCKLhCt0D5IU1qLTtYw*g0ilNDlQ3TsdFUqJCqAm9iL7Wa60H7eYcHL_5oP136TOJREkS3BzheDC1dlxz5oJ**05b8943049af490e913bbc3a2485bee2aaf7b823f4c41d0ff0b7c168371a3772*R8yscVdTBRMdsoVbdDiFmUL8zb-c3PQLGJn4Y8C-AqI';
+            const unsealed = await Iron.unseal(ticket, password, Iron.defaults);
+            expect(unsealed).to.equal(obj);
+        });
+
+        it('rejects legacy sealed strings when ttlPolicyFallback is reject', async () => {
+
+            const ticket = 'Fe26.2**0cdd607945dd1dffb7da0b0bf5f1a7daa6218cbae14cac51dcbd91fb077aeb5b*aOZLCKLhCt0D5IU1qLTtYw*g0ilNDlQ3TsdFUqJCqAm9iL7Wa60H7eYcHL_5oP136TOJREkS3BzheDC1dlxz5oJ**05b8943049af490e913bbc3a2485bee2aaf7b823f4c41d0ff0b7c168371a3772*R8yscVdTBRMdsoVbdDiFmUL8zb-c3PQLGJn4Y8C-AqI';
+
+            const unsealOptions = Hoek.clone(Iron.defaults);
+            unsealOptions.ttlPolicyFallback = Iron.ttlPolicyFallbackModes.REJECT;
+            const err = await expect(Iron.unseal(ticket, password, unsealOptions)).to.reject('Unknown ttl policy');
+            expect(err.isBoom).to.be.true();
+        });
+
+        it('returns an error when ttlPolicyFallback has an invalid value', async () => {
+
+            const sealOptions = Hoek.clone(Iron.defaults);
+            sealOptions.ttl = 200;
+            const sealed = await Iron.seal(obj, password, sealOptions);
+
+            const unsealOptions = Hoek.clone(Iron.defaults);
+            unsealOptions.ttlPolicyFallback = 'nope';
+            const err = await expect(Iron.unseal(sealed, password, unsealOptions)).to.reject('Invalid ttlPolicyFallback option: nope');
+            expect(err.isBoom).to.be.true();
+        });
+
+        it('uses the defaults ttlPolicyFallback when the option is omitted', async () => {
+
+            const sealOptions = Hoek.clone(Iron.defaults);
+            sealOptions.ttl = 200;
+            const sealed = await Iron.seal(obj, password, sealOptions);
+
+            const unsealOptions = Hoek.clone(Iron.defaults);
+            delete unsealOptions.ttlPolicyFallback;
+            const unsealed = await Iron.unseal(sealed, password, unsealOptions);
+            expect(unsealed).to.equal(obj);
         });
     });
 });
