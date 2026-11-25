@@ -1,0 +1,43 @@
+diff --git a/conn.go b/conn.go
+index b8d44f7..37a7748 100644
+--- a/conn.go
++++ b/conn.go
+@@ -3018,13 +3018,11 @@ func (c *Conn) handleRecordContent(ctx context.Context, content protocol.Content
+ }
+ 
+ func (c *Conn) handleAlertRecord(content *alert.Alert, markPacketAsValid func() bool) (bool, packetOutcome, error) {
+-	if dtlsstate.CommonState(c.state).LocalVersion == protocol.Version1_3 {
+-		switch content.Description {
+-		case alert.CloseNotify, alert.UserCanceled:
+-			content.Level = alert.Warning
+-		default:
+-			content.Level = alert.Fatal
+-		}
++	switch content.Description {
++	case alert.CloseNotify, alert.UserCanceled:
++		content.Level = alert.Warning
++	default:
++		content.Level = alert.Fatal
+ 	}
+ 	c.log.Tracef("%s: <- %s", srvCliStr(dtlsstate.CommonState(c.state).IsClient), content.String())
+ 	var responseAlert *alert.Alert
+diff --git a/conn_test.go b/conn_test.go
+index 71b6d94..a4f074a 100644
+--- a/conn_test.go
++++ b/conn_test.go
+@@ -1236,12 +1236,9 @@ func TestAlertLevelsByVersion(t *testing.T) {
+ 				_, _, err := conn.handleRecordContent(t.Context(), message, incomingPacketState{markPacketAsValid: func() bool { return true }}, nil, nil)
+ 				var received *alertError
+ 				require.ErrorAs(t, err, &received)
+-				want := level
+-				if version == protocol.Version1_3 {
+-					want = alert.Warning
+-					if description == alert.BadCertificate {
+-						want = alert.Fatal
+-					}
++				want := alert.Warning
++				if description == alert.BadCertificate {
++					want = alert.Fatal
+ 				}
+ 				assert.Equal(t, want, received.Level)
+ 			}
